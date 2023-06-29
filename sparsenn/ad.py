@@ -9,6 +9,7 @@ from jax._src.traceback_util import api_boundary
 from jax._src.util import split_list, wraps
 from jax.experimental.sparse._base import JAXSparse
 from jax.util import safe_zip
+from jax.flatten_util import ravel_pytree
 
 is_sparse = lambda x: isinstance(x, JAXSparse)
 
@@ -36,9 +37,11 @@ def flatten_fun_for_sparse_ad(fun, argnums: Union[int, tuple[int]], args: tuple[
         range(tree2.num_leaves), [child.num_leaves for child in tree2.children()]
     )
     assert not end
-    # # For sparse args, we only mark the first buffer (the data) for differentiation.
-    # leaf_argnums2 = [nums[:1] if is_sparse(arg) else nums
-    #                  for arg, nums in safe_zip(args_flat1, leaf_argnums2)]
+    # For sparse args, we only mark the first buffer (the data) for differentiation.
+    leaf_argnums2 = [
+        nums[:1] if is_sparse(arg) else nums
+        for arg, nums in safe_zip(args_flat1, leaf_argnums2)
+    ]
     argnums_flat = tuple(
         itertools.chain.from_iterable(
             nums for i, nums in enumerate(leaf_argnums2) if i in argnums_flat1
@@ -58,9 +61,17 @@ def flatten_fun_for_sparse_ad(fun, argnums: Union[int, tuple[int]], args: tuple[
             f_recons = jax.vmap(f_recons)
         return f_recons(grad_out)
 
+    single_argnum = isinstance(argnums, int)
+
+    _, unravel = ravel_pytree(tuple((args[i] for i in argnums_tup)))
+
     def postprocess_gradients(grads_out):
         out = [reconstruct(*args) for args in safe_zip(argnums_flat1, grads_out)]
-        return out
+        out_flat, _ = ravel_pytree(out)
+        result = unravel(out_flat)
+        if single_argnum:
+            return result[0]
+        return result
 
     return fun_flat, argnums_flat, args_flat, postprocess_gradients
 
@@ -90,23 +101,16 @@ def value_and_grad(
     @wraps(fun, docstr=raw_value_and_grad_fun.__doc__, argnums=argnums)
     @api_boundary
     def value_and_grad_fun(*args, **kwargs):
-        treedef = jax.tree_util.tree_structure(args[argnums])
-
         (
             fun_flat,
             argnums_flat,
             args_flat,
             postprocess_gradients,
         ) = flatten_fun_for_sparse_ad(fun, argnums, args)
-
         val_out, grad_out = jax.value_and_grad(
             fun_flat, argnums=argnums_flat, has_aux=has_aux, **kwargs
         )(*args_flat)
-
-        grad_processed = postprocess_gradients(grad_out)
-        grad_structured = jax.tree_util.tree_unflatten(treedef, grad_processed)
-
-        return val_out, grad_structured
+        return val_out, postprocess_gradients(grad_out)
 
     return value_and_grad_fun
 
@@ -134,9 +138,6 @@ def grad(
     @wraps(fun, docstr=raw_grad_fun.__doc__, argnums=argnums)
     @api_boundary
     def grad_fun(*args, **kwargs):
-
-        treedef = jax.tree_util.tree_structure(args[argnums])
-
         (
             fun_flat,
             argnums_flat,
@@ -147,11 +148,8 @@ def grad(
             *args_flat
         )
         if has_aux:
-            grad_processed = postprocess_gradients(out[0])
-            grad_structured = jax.tree_util.tree_unflatten(treedef, grad_processed)
-            return grad_structured, out[1]
-        grad_processed = postprocess_gradients(out)
-        grad_structured = jax.tree_util.tree_unflatten(treedef, grad_processed)
-        return grad_structured
+            return postprocess_gradients(out[0]), out[1]
+
+        return postprocess_gradients(out)
 
     return grad_fun
