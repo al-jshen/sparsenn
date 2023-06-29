@@ -68,7 +68,7 @@ class SparseLinear(eqx.Module):
             )
             sparse_mask = sparse_mask.at[:, fill_cols].set(1)
 
-        self.W = sparse.BCOO.fromdense(weights * sparse_mask)
+        self.W = sparse.BCOO.fromdense((weights * sparse_mask).T)
         self.B = jax.random.normal(keys[4], (out_dims,))
 
     def __call__(self, x):
