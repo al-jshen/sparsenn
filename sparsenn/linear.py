@@ -84,7 +84,7 @@ class SparseLinear(eqx.Module):
         out: Array
             Output array.
         """
-        return self.W.T @ x + self.B
+        return self.W @ x + self.B
 
     def n_params(self):
         return self.W.nse + self.B.size
