@@ -71,7 +71,7 @@ class SparseLinear(eqx.Module):
         self.W = sparse.BCOO.fromdense(weights * sparse_mask)
         self.B = jax.random.normal(keys[4], (out_dims,))
 
-    def __call__(self, x, key=None):
+    def __call__(self, x):
         """Compute the output of the linear layer.
 
         Inputs:
@@ -141,14 +141,14 @@ class SparseMLP(eqx.Module):
         depth = len(dims) - 1
 
         keys = jax.random.split(rng, depth)
-        activations = [eqx.nn.Lambda(act)] * (depth - 1) + [eqx.nn.Lambda(act_final)]
+        activations = [act] * (depth - 1) + [act_final]
 
         for i in range(depth):
             layers.append(
                 SparseLinear(
                     keys[i],
                     dims[i],
-                    dims[i] + 1,
+                    dims[i + 1],
                     dense_rows,
                     dense_cols,
                     sparsity=sparsity,
@@ -158,7 +158,7 @@ class SparseMLP(eqx.Module):
 
         self.layers = layers
 
-    def __call__(self, x, key=None):
+    def __call__(self, x):
         """Compute the output of the MLP.
 
         Inputs:
@@ -172,5 +172,5 @@ class SparseMLP(eqx.Module):
             Output array.
         """
         for layer in self.layers:
-            x = layer(x, key)
+            x = layer(x)
         return x
