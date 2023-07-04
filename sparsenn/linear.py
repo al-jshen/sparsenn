@@ -1,8 +1,8 @@
 from typing import Callable
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
+import equinox as eqx
 from jax.experimental.sparse import BCOO
 
 from .custom_types import Array, Key
@@ -21,6 +21,7 @@ class SparseLinear(eqx.Module):
         out_dims: int,
         dense_rows: int | Array,
         dense_cols: int | Array,
+        bands: int = 0,
         sparsity: float = 0.8,
     ):
         """Initialize a sparse linear layer.
@@ -39,6 +40,11 @@ class SparseLinear(eqx.Module):
         dense_cols: int | Array
             Number of dense columns or indices of dense columns. If an integer is passed,
             randomly selects that many columns to be dense.
+        bands: int
+            Add bands along the diagonal of the weight matrix. Defaults to 0, which means
+            no bands are added. bands=1 means that only the main diagonal is dense, and
+            bands=2 means that the main diagonal and the diagonals above and below it
+            are dense.
         sparsity: float
             Probability of a weight being zero, not including the dense rows and columns.
 
@@ -69,6 +75,12 @@ class SparseLinear(eqx.Module):
                 keys[3], out_dims, (dense_cols,), replace=False
             )
             sparse_mask = sparse_mask.at[:, fill_cols].set(1)
+
+        # banding
+        for i in range(0, bands):
+            diag_indices = jnp.arange(min(in_dims, out_dims) - i)
+            sparse_mask = sparse_mask.at[diag_indices, diag_indices + i].set(1)
+            sparse_mask = sparse_mask.at[diag_indices + i, diag_indices].set(1)
 
         self.W = BCOO.fromdense((weights * sparse_mask).T)
         self.B = jax.random.normal(keys[4], (out_dims,))
@@ -106,6 +118,7 @@ class SparseMLP(eqx.Module):
         act: Callable = jax.nn.leaky_relu,
         act_final: Callable = lambda x: x,
         sparsity: float = 0.95,
+        bands: int = 0,
         dense_rows: int = 0,
         dense_cols: int = 0,
     ):
@@ -127,6 +140,8 @@ class SparseMLP(eqx.Module):
             Activation function for final layer. Defaults to identity.
         sparsity: float
             Sparsity of SparseLinear layers.
+        bands: int
+            Number of bands in SparseLinear layers.
         dense_rows: int
             Number of dense rows in each SparseLinear layer.
         dense_cols: int
@@ -153,7 +168,8 @@ class SparseMLP(eqx.Module):
                     dims[i + 1],
                     dense_rows,
                     dense_cols,
-                    sparsity=sparsity,
+                    bands,
+                    sparsity,
                 )
             )
             layers.append(activations[i])
@@ -195,6 +211,7 @@ class ResLinear(eqx.Module):
         dense_rows: int | Array,
         dense_cols: int | Array,
         sparsity: float = 0.8,
+        bands: int = 0,
         act: Callable = jax.nn.leaky_relu,
     ):
         """Initialize a sparse linear block with skip connections.
@@ -213,6 +230,10 @@ class ResLinear(eqx.Module):
             randomly selects that many columns to be dense.
         sparsity: float
             Probability of a weight being zero, not including the dense rows and columns.
+        bands: int
+            Number of bands in the SparseLinear layer.
+        act: Callable
+            Activation function. Defaults to leaky ReLU.
 
         Outputs:
         ========
@@ -220,10 +241,16 @@ class ResLinear(eqx.Module):
         """
         keys = jax.random.split(rng, 2)
         self.linear1 = SparseLinear(
-            keys[0], dims, dims, dense_rows, dense_cols, sparsity
+            keys[0],
+            dims,
+            dims,
+            dense_rows,
+            dense_cols,
+            bands,
+            sparsity,
         )
         self.linear2 = SparseLinear(
-            keys[1], dims, dims, dense_rows, dense_cols, sparsity
+            keys[1], dims, dims, dense_rows, dense_cols, bands, sparsity
         )
         self.act = act
 
@@ -264,6 +291,7 @@ class ResMLP(eqx.Module):
         sparsity: float = 0.95,
         dense_rows: int = 0,
         dense_cols: int = 0,
+        bands: int = 0,
     ):
         """Initialize a sparse MLP.
 
@@ -289,6 +317,8 @@ class ResMLP(eqx.Module):
             Number of dense rows in each SparseLinear layer.
         dense_cols: int
             Number of dense columns in each SparseLinear layer.
+        bands: int
+            Number of bands in each SparseLinear layer.
 
         Outputs:
         ========
@@ -299,7 +329,9 @@ class ResMLP(eqx.Module):
             eqx.nn.Linear(in_dims, hidden_dims, key=keys[0]),
             eqx.nn.Lambda(act),
             *[
-                ResLinear(k, hidden_dims, dense_rows, dense_cols, sparsity, act=act)
+                ResLinear(
+                    k, hidden_dims, dense_rows, dense_cols, sparsity, bands, act=act
+                )
                 for k in keys[1:-1]
             ],
             eqx.nn.Linear(hidden_dims, out_dims, key=keys[-1]),
