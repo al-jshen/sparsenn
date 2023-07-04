@@ -1,15 +1,18 @@
 from typing import Callable
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.experimental import sparse
-import equinox as eqx
+
+from jax.experimental.sparse import BCOO
+
 from .custom_types import Array, Key
 
 
 class SparseLinear(eqx.Module):
     """Linear layer with sparse weights and dense biases."""
 
-    W: sparse.BCOO
+    W: BCOO
     B: Array
 
     def __init__(
@@ -68,7 +71,7 @@ class SparseLinear(eqx.Module):
             )
             sparse_mask = sparse_mask.at[:, fill_cols].set(1)
 
-        self.W = sparse.BCOO.fromdense((weights * sparse_mask).T)
+        self.W = BCOO.fromdense((weights * sparse_mask).T)
         self.B = jax.random.normal(keys[4], (out_dims,))
 
     def __call__(self, x):
@@ -174,3 +177,72 @@ class SparseMLP(eqx.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+
+
+class ResLinear(eqx.Module):
+    """Sparse linear block with skip connections.
+    Operates as r(f2(r(f1(x))) + x), where f1 and f2 are linear layers and r is an
+    activation function (leaky ReLU by default)
+    """
+
+    linear1: SparseLinear
+    linear2: SparseLinear
+    act: Callable
+
+    def __init__(
+        self,
+        rng: Key,
+        dims: int,
+        dense_rows: int | Array,
+        dense_cols: int | Array,
+        sparsity: float = 0.8,
+        act: Callable = jax.nn.leaky_relu,
+    ):
+        """Initialize a sparse linear block with skip connections.
+
+        Inputs:
+        =======
+        rng: Key
+            Random number generator key.
+        in_dims: int
+            Number of input/output dimensions.
+        dense_rows: int | Array
+            Number of dense rows or indices of dense rows. If an integer is passed,
+            randomly selects that many rows to be dense.
+        dense_cols: int | Array
+            Number of dense columns or indices of dense columns. If an integer is passed,
+            randomly selects that many columns to be dense.
+        sparsity: float
+            Probability of a weight being zero, not including the dense rows and columns.
+
+        Outputs:
+        ========
+        None
+        """
+        keys = jax.random.split(rng, 2)
+        self.linear1 = SparseLinear(
+            keys[0], dims, dims, dense_rows, dense_cols, sparsity
+        )
+        self.linear2 = SparseLinear(
+            keys[1], dims, dims, dense_rows, dense_cols, sparsity
+        )
+        self.act = act
+
+    def __call__(self, x, key=None):
+        """Compute the output of the linear layer.
+
+        Inputs:
+        =======
+        x: Array
+            Input array.
+
+        Outputs:
+        ========
+        out: Array
+            Output array.
+        """
+        out = self.act(self.linear1(x))
+        out = self.linear2(out)
+        out = out + x
+        out = self.act(out)
+        return out
