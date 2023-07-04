@@ -1,7 +1,8 @@
+import typing
+from typing import TYPE_CHECKING, Any, TypeVar
+
 import jax
 import jax.numpy as jnp
-import typing
-from typing import TYPE_CHECKING, TypeVar, Any
 
 Key = jax.random.PRNGKeyArray
 Array = jnp.ndarray

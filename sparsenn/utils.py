@@ -1,5 +1,5 @@
-from jax.flatten_util import ravel_pytree
 import equinox as eqx
+from jax.flatten_util import ravel_pytree
 
 
 def nparams(model):
