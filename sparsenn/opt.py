@@ -1,16 +1,15 @@
 import equinox as eqx
-from jax.flatten_util import ravel_pytree
-from .filter_ad import filter_value_and_grad
+import jax.tree_util as jtu
 
 
-def make_sgd_step(fun, lr):
-    @eqx.filter_jit
-    def wrap(model, *args, **kwargs):
-        loss_value, grads = filter_value_and_grad(fun)(model, *args, **kwargs)
-        grads_flat, unravel = ravel_pytree(grads)
-        diff_model, static_model = eqx.partition(model, eqx.is_array)
-        diff_model_flat, _ = ravel_pytree(diff_model)
-        diff_model_flat_new = diff_model_flat - lr * grads_flat
-        return eqx.combine(unravel(diff_model_flat_new), static_model), loss_value
+def apply_updates(sparse_model, updates):
+    splitter = jtu.tree_map(eqx.is_inexact_array, sparse_model)
 
-    return wrap
+    # intermediate bcoo will be invalid here because the indices
+    # will be set to None but that doesn't matter because the leaves
+    # are still valid
+    model_diff, model_static = eqx.partition(sparse_model, splitter)
+
+    updates_diff, _ = eqx.partition(updates, splitter)
+    model_diff_new = jtu.tree_map(lambda p, g: p + g, model_diff, updates_diff)
+    return eqx.combine(model_diff_new, model_static)
