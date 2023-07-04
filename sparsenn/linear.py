@@ -245,3 +245,80 @@ class ResLinear(eqx.Module):
         out = out + x
         out = self.act(out)
         return out
+
+
+class ResMLP(eqx.Module):
+    """Multi-layer perceptron with sparse residual blocks."""
+
+    layers: list
+
+    def __init__(
+        self,
+        rng: Key,
+        in_dims: int,
+        out_dims: int,
+        hidden_dims: int = 64,
+        n_blocks: int = 3,
+        act: Callable = jax.nn.leaky_relu,
+        act_final: Callable = lambda x: x,
+        sparsity: float = 0.95,
+        dense_rows: int = 0,
+        dense_cols: int = 0,
+    ):
+        """Initialize a sparse MLP.
+
+        Inputs:
+        =======
+        rng: Key
+            Random number generator key.
+        in_dims: int
+            Number of input dimensions.
+        out_dims: int
+            Number of output dimensions.
+        hidden_dims: int
+            Dimensions of hidden layers.
+        n_blocks: int
+            Number of residual blocks.
+        act: Callable
+            Activation function for hidden residual blocks. Defaults to leaky ReLU.
+        act_final: Callable
+            Activation function for final layer. Defaults to identity.
+        sparsity: float
+            Sparsity of SparseLinear layers.
+        dense_rows: int
+            Number of dense rows in each SparseLinear layer.
+        dense_cols: int
+            Number of dense columns in each SparseLinear layer.
+
+        Outputs:
+        ========
+        None
+        """
+        keys = jax.random.split(rng, n_blocks + 2)
+        self.layers = [
+            eqx.nn.Linear(in_dims, hidden_dims, key=keys[0]),
+            eqx.nn.Lambda(act),
+            *[
+                ResLinear(k, hidden_dims, dense_rows, dense_cols, sparsity, act=act)
+                for k in keys[1:-1]
+            ],
+            eqx.nn.Linear(hidden_dims, out_dims, key=keys[-1]),
+            eqx.nn.Lambda(act_final),
+        ]
+
+    def __call__(self, x):
+        """Compute the output of the MLP.
+
+        Inputs:
+        =======
+        x: Array
+            Input array.
+
+        Outputs:
+        ========
+        out: Array
+            Output array.
+        """
+        for layer in self.layers:
+            x = layer(x)
+        return x
