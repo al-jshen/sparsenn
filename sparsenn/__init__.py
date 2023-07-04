@@ -1,6 +1,6 @@
 from .ad import filter_grad, filter_value_and_grad, grad, value_and_grad
-from .linear import ResLinear, SparseLinear, SparseMLP, ResMLP
-from .opt import apply_updates
+from .linear import ResLinear, ResMLP, SparseLinear, SparseMLP
+from .opt import apply_updates, flatten
 
 __all__ = [
     "grad",
@@ -12,4 +12,5 @@ __all__ = [
     "ResLinear",
     "ResMLP",
     "apply_updates",
+    "flatten",
 ]
