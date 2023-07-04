@@ -179,7 +179,7 @@ class _ValueAndGradWrapper(eqx.Module):
         return self._fun
 
     def __call__(self, x, /, *args, **kwargs):
-        @ft.partial(sparse_value_and_grad, has_aux=self._has_aux, **self._gradkwargs)
+        @ft.partial(value_and_grad, has_aux=self._has_aux, **self._gradkwargs)
         def fun_value_and_grad(_diff_x, _nondiff_x, *_args, **_kwargs):
             _x = eqx.combine(_diff_x, _nondiff_x)
             return self._fun(_x, *_args, **_kwargs)
