@@ -196,12 +196,14 @@ class SparseMLP(eqx.Module):
 
 class ResLinear(eqx.Module):
     """Sparse linear block with skip connections.
-    Operates as r(f2(r(f1(x))) + x), where f1 and f2 are linear layers and r is an
+    Operates as r(f2(r(f1(x))) + x), where f1 and f2 are linear layers with a batchnorm and r is an
     activation function (leaky ReLU by default)
     """
 
     linear1: SparseLinear
     linear2: SparseLinear
+    norm1: eqx.nn.BatchNorm
+    norm2: eqx.nn.BatchNorm
     act: Callable
 
     def __init__(
@@ -252,9 +254,11 @@ class ResLinear(eqx.Module):
         self.linear2 = SparseLinear(
             keys[1], dims, dims, dense_rows, dense_cols, bands, sparsity
         )
+        self.norm1 = eqx.nn.BatchNorm(dims)
+        self.norm2 = eqx.nn.BatchNorm(dims)
         self.act = act
 
-    def __call__(self, x, key=None):
+    def __call__(self, x, state, key=None):
         """Compute the output of the linear layer.
 
         Inputs:
@@ -267,11 +271,14 @@ class ResLinear(eqx.Module):
         out: Array
             Output array.
         """
-        out = self.act(self.linear1(x))
+        out = self.linear1(x)
+        out, state = self.norm1(out, state)
+        out = self.act(out)
         out = self.linear2(out)
+        out, state = self.norm2(out, state)
         out = out + x
         out = self.act(out)
-        return out
+        return out, state
 
 
 class ResMLP(eqx.Module):
@@ -338,7 +345,7 @@ class ResMLP(eqx.Module):
             eqx.nn.Lambda(act_final),
         ]
 
-    def __call__(self, x):
+    def __call__(self, x, state):
         """Compute the output of the MLP.
 
         Inputs:
@@ -352,5 +359,8 @@ class ResMLP(eqx.Module):
             Output array.
         """
         for layer in self.layers:
-            x = layer(x)
-        return x
+            if isinstance(layer, ResLinear):
+                x, state = layer(x, state)
+            else:
+                x = layer(x)
+        return x, state
