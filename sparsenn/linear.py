@@ -326,7 +326,7 @@ class ResMLP(eqx.Module):
         """
         keys = jax.random.split(rng, n_blocks + 2)
         self.layers = [
-            eqx.nn.Linear(in_dims, hidden_dims, key=keys[0]),
+            SparseLinear(keys[0], in_dims, hidden_dims, 0, 0, 0, sparsity),
             eqx.nn.Lambda(act),
             *[
                 ResLinear(
@@ -334,7 +334,7 @@ class ResMLP(eqx.Module):
                 )
                 for k in keys[1:-1]
             ],
-            eqx.nn.Linear(hidden_dims, out_dims, key=keys[-1]),
+            SparseLinear(keys[-1], hidden_dims, out_dims, 0, 0, 0, sparsity),
             eqx.nn.Lambda(act_final),
         ]
 
