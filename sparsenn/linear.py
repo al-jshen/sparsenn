@@ -115,7 +115,7 @@ class SparseMLP(eqx.Module):
         in_dims: int,
         out_dims: int,
         hidden_dims: tuple[int, ...] = (100, 100),
-        act: Callable = jax.nn.leaky_relu,
+        act: Callable = jax.nn.swish,
         act_final: Callable = lambda x: x,
         sparsity: float = 0.95,
         bands: int = 0,
@@ -202,8 +202,8 @@ class ResLinear(eqx.Module):
 
     linear1: SparseLinear
     linear2: SparseLinear
-    norm1: eqx.nn.BatchNorm
-    norm2: eqx.nn.BatchNorm
+    norm1: eqx.nn.LayerNorm
+    norm2: eqx.nn.LayerNorm
     act: Callable
 
     def __init__(
@@ -214,7 +214,7 @@ class ResLinear(eqx.Module):
         dense_cols: int | Array,
         sparsity: float = 0.8,
         bands: int = 0,
-        act: Callable = jax.nn.leaky_relu,
+        act: Callable = jax.nn.swish,
     ):
         """Initialize a sparse linear block with skip connections.
 
@@ -254,11 +254,11 @@ class ResLinear(eqx.Module):
         self.linear2 = SparseLinear(
             keys[1], dims, dims, dense_rows, dense_cols, bands, sparsity
         )
-        self.norm1 = eqx.nn.BatchNorm(dims)
-        self.norm2 = eqx.nn.BatchNorm(dims)
+        self.norm1 = eqx.nn.LayerNorm(dims)  # eqx.nn.BatchNorm(dims, axis_name='batch')
+        self.norm2 = eqx.nn.LayerNorm(dims)  # eqx.nn.BatchNorm(dims, axis_name='batch')
         self.act = act
 
-    def __call__(self, x, state, key=None):
+    def __call__(self, x):
         """Compute the output of the linear layer.
 
         Inputs:
@@ -272,13 +272,13 @@ class ResLinear(eqx.Module):
             Output array.
         """
         out = self.linear1(x)
-        out, state = self.norm1(out, state)
+        # out = self.norm1(out)
         out = self.act(out)
         out = self.linear2(out)
-        out, state = self.norm2(out, state)
+        out = self.norm2(out)
         out = out + x
         out = self.act(out)
-        return out, state
+        return out
 
 
 class ResMLP(eqx.Module):
@@ -293,7 +293,7 @@ class ResMLP(eqx.Module):
         out_dims: int,
         hidden_dims: int = 64,
         n_blocks: int = 3,
-        act: Callable = jax.nn.leaky_relu,
+        act: Callable = jax.nn.swish,
         act_final: Callable = lambda x: x,
         sparsity: float = 0.95,
         dense_rows: int = 0,
@@ -345,7 +345,7 @@ class ResMLP(eqx.Module):
             eqx.nn.Lambda(act_final),
         ]
 
-    def __call__(self, x, state):
+    def __call__(self, x):
         """Compute the output of the MLP.
 
         Inputs:
@@ -359,8 +359,5 @@ class ResMLP(eqx.Module):
             Output array.
         """
         for layer in self.layers:
-            if isinstance(layer, ResLinear):
-                x, state = layer(x, state)
-            else:
-                x = layer(x)
-        return x, state
+            x = layer(x)
+        return x
