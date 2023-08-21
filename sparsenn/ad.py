@@ -388,48 +388,17 @@ def filter_grad(fun=sentinel, *, has_aux: bool = False, **gradkwargs):
     return eqx.module_update_wrapper(_GradWrapper(fun_value_and_grad, has_aux), fun)
 
 
-def chunked_vmap(fun: Callable, chunk_size: int, **vmapkwargs):
-    """Applies `fun` to chunks of the first argument using `jax.vmap`.
+def chunked_vmap(f, chunk_size=64, in_axes=0, out_axes=0):
+    def wrapped_f(*args):
+        input_shape = args[in_axes].shape
+        num_chunks = int(np.ceil(input_shape[0] / chunk_size))
 
-    This is useful for when you have a function that is too large to fit in memory
-    but you can split it into chunks that do fit in memory.
+        chunk_results = []
+        for i in range(num_chunks):
+            chunked_args = [a[i * chunk_size : (i + 1) * chunk_size] for a in args]
+            chunk_res = jax.vmap(f, in_axes=in_axes, out_axes=out_axes)(*chunked_args)
+            chunk_results.append(chunk_res)
 
-    **Arguments:**
+        return jnp.concatenate(chunk_results)
 
-    - `fun` is a pure function to differentiate.
-    - `chunk_size` is the size of the chunks to split the first argument into.
-    - `vmapkwargs` are passed to `jax.vmap`.
-
-    **Returns:**
-
-    A function with the same arguments as `fun`, that applies `fun` to chunks of the
-    first argument using `jax.vmap`. The results are concatenated back together and
-    returned.
-
-    !!! tip
-
-        If you need to differentiate multiple objects, then put them together into a
-        tuple and pass that through the first argument:
-        ```python
-        # We want to differentiate `func` with respect to both `x` and `y`.
-        def func(x, y):
-            ...
-
-        @equinox.chunked_vmap(chunk_size=100)
-        def chunked_func(x__y):
-            x, y = x__y
-            return func(x, y)
-        ```
-
-    """
-
-    def chunked_fun(*args, **kwargs):
-        args = args[0]
-        num_chunks = int(jnp.ceil(len(args) / chunk_size))
-        chunks = [
-            args[i * chunk_size : (i + 1) * chunk_size] for i in range(num_chunks)
-        ]
-        results = jax.vmap(fun, **vmapkwargs)(*chunks, **kwargs)
-        return jnp.concatenate(results)
-
-    return chunked_fun
+    return eqx.filter_jit(wrapped_f)
