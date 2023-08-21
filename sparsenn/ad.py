@@ -386,19 +386,3 @@ def filter_grad(fun=sentinel, *, has_aux: bool = False, **gradkwargs):
     fun_value_and_grad = filter_value_and_grad(fun, has_aux=has_aux, **gradkwargs)
     fun_value_and_grad = cast(_ValueAndGradWrapper, fun_value_and_grad)
     return eqx.module_update_wrapper(_GradWrapper(fun_value_and_grad, has_aux), fun)
-
-
-def chunked_vmap(f, chunk_size=64, in_axes=0, out_axes=0):
-    def wrapped_f(*args):
-        input_shape = args[in_axes].shape
-        num_chunks = int(np.ceil(input_shape[0] / chunk_size))
-
-        chunk_results = []
-        for i in range(num_chunks):
-            chunked_args = [a[i * chunk_size : (i + 1) * chunk_size] for a in args]
-            chunk_res = jax.vmap(f, in_axes=in_axes, out_axes=out_axes)(*chunked_args)
-            chunk_results.append(chunk_res)
-
-        return jnp.concatenate(chunk_results)
-
-    return eqx.filter_jit(wrapped_f)
