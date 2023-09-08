@@ -338,11 +338,16 @@ def vmap_chunked(
 
         def inner(*args):
             args_chunked = jax.tree_map(
-                lambda x: _chunk(x, x.shape[0] // devices), args
+                lambda arg, ax: _chunk(arg, arg.shape[0] // devices)
+                if ax is not None
+                else arg,
+                args,
+                in_axes,
             )
 
             result = jax.pmap(
                 _vmap_chunked(f, in_axes, chunk_size=chunk_size),
+                in_axes=in_axes,
                 devices=jax.devices()[:devices],
             )(*args_chunked)
 
