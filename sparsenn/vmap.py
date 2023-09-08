@@ -313,8 +313,7 @@ def vmap_chunked(f, in_axes=0, chunk_size=None, devices=1):
     """
 
     if devices == 1:
-        return _vmap_chunked(f, in_axes, chunk_size)(*args)
-
+        return _vmap_chunked(f, in_axes, chunk_size=chunk_size)
     else:
         assert devices > 0
         in_axes, argnums = _parse_in_axes(in_axes)
