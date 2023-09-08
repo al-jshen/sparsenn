@@ -295,18 +295,40 @@ def _vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Calla
     return _chunk_vmapped_function(vmapped_fun, chunk_size, argnums)
 
 
-def vmap_chunked(
-    f: Callable, in_axes=0, *, chunk_size: Optional[int], gpus: int = 1
-) -> Callable:
+def vmap_chunked(f, in_axes=0, chunk_size=None, devices=1):
     """
-    Behaves like _vmap_chunked but with support for multiple GPUs using pmap.
+    Behaves like jax.vmap but
+        1. uses pmap to chunk the computations across multiple devices
+        2. uses scan to chunk the device-level computations into even smaller chunks for memory efficiency
+
+    Inputs:
+        f: The function to be vectorised.
+        in_axes: The axes that should be scanned along. Only supports `0` or `None`. Defaults to 0.
+                 This should be the same length as the number of arguments to `f`.
+        chunk_size: The maximum size of the chunks to be used per batch (and per device). If it is `None`, chunking is disabled.
+        devices: The number of devices to split the computation across. Defaults to 1.
+
+    Returns:
+        A vectorised and chunked function that has inputs and outputs like `f`
     """
-    if chunk_size is None:
-        return jax.pmap(f, in_axes=in_axes, devices=jax.devices()[:gpus])
-    assert chunk_size % gpus == 0, "chunk_size must be divisible by gpus"
-    chunk_size_per_gpu = chunk_size // gpus
-    return jax.pmap(
-        _vmap_chunked(f, in_axes=in_axes, chunk_size=chunk_size_per_gpu),
-        in_axes=in_axes,
-        devices=jax.devices()[:gpus],
-    )
+
+    if devices == 1:
+        return _vmap_chunked(f, in_axes, chunk_size)(*args)
+
+    else:
+        assert devices > 0
+        in_axes, argnums = _parse_in_axes(in_axes)
+
+        def inner(*args):
+            args_chunked = jax.tree_map(
+                lambda x: _chunk(x, x.shape[0] // devices), args
+            )
+
+            result = jax.pmap(
+                _vmap_chunked(f, in_axes, chunk_size=chunk_size),
+                devices=jax.devices()[:devices],
+            )(*args_chunked)
+
+            return _unchunk(result)
+
+        return inner
