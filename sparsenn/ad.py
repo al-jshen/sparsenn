@@ -2,6 +2,7 @@ import itertools
 from typing import Any, Callable, Sequence, Union
 
 import jax
+import jax.numpy as jnp
 from jax import tree_util
 from jax._src import core
 from jax._src.api_util import _ensure_index, _ensure_index_tuple
@@ -10,8 +11,6 @@ from jax._src.util import split_list, wraps
 from jax.experimental.sparse._base import JAXSparse
 from jax.flatten_util import ravel_pytree
 from jax.util import safe_zip
-
-import jax.numpy as jnp
 
 is_sparse = lambda x: isinstance(x, JAXSparse)
 
@@ -377,7 +376,6 @@ def filter_grad(fun=sentinel, *, has_aux: bool = False, **gradkwargs):
 
         See also [`equinox.apply_updates`][] for a convenience function that applies
         non-`None` gradient updates to a model.
-
     """
 
     if fun is sentinel:

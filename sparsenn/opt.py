@@ -20,10 +20,10 @@ def apply_updates(sparse_model, updates):
 
 
 def flatten(inner: base.GradientTransformation) -> base.GradientTransformationExtraArgs:
-    """Flattens parameters and gradients for init and update of inner transform.
+    """Flattens parameters and gradients for init and update of inner
+    transform.
 
-    This can reduce the overhead of performing many calculations on lots of small
-    variables, at the cost of slightly increased memory usage.
+    This can reduce the overhead of performing many calculations on lots of small variables, at the cost of slightly increased memory usage.
 
     Args:
       inner: Inner transformation to flatten inputs for.
@@ -35,14 +35,16 @@ def flatten(inner: base.GradientTransformation) -> base.GradientTransformationEx
     inner = base.with_extra_args_support(inner)
 
     def _flatten(params):
-        """Flattens and concatenates all tensors in params to a single vector."""
+        """Flattens and concatenates all tensors in params to a single
+        vector."""
         # params, _ = jtu.tree_flatten(params)
         # return jnp.concatenate([jnp.reshape(param, [-1]) for param in params])
         params = eqx.filter(params, eqx.is_inexact_array)
         return ravel_pytree(params)[0]
 
     def _unflatten(updates, flat):
-        """Extracts tensors from flat, using the structure and shapes of params."""
+        """Extracts tensors from flat, using the structure and shapes of
+        params."""
         updates_flat, treedef = jtu.tree_flatten(updates)
         offsets = []
         for update in updates_flat:

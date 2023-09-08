@@ -2,17 +2,17 @@
 
 import sys
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
+
 import jax
-from jax.api_util import argnums_partial
 import jax.numpy as jnp
+from jax.api_util import argnums_partial
 
 
 class HashablePartial(partial):
-    """
-    A class behaving like functools.partial, but that retains it's hash
-    if it's created with a lexically equivalent (the same) function and
-    with the same partially applied arguments and keywords.
+    """A class behaving like functools.partial, but that retains it's hash if
+    it's created with a lexically equivalent (the same) function and with the
+    same partially applied arguments and keywords.
 
     It also stores the computed hash for faster hashing.
     """
@@ -87,8 +87,7 @@ def _chunk(x, chunk_size=None):
 
 
 def scanmap(fun, scan_fun, argnums=0):
-    """
-    A helper function to wrap f with a scan_fun
+    """A helper function to wrap f with a scan_fun.
 
     Example:
         import jax.numpy as jnp
@@ -135,7 +134,8 @@ def _multimap(f, *args):
 
 
 def scan_append_reduce(f, x, append_cond, op=_tree_add):
-    """Evaluate f element by element in x while appending and/or reducing the results
+    """Evaluate f element by element in x while appending and/or reducing the
+    results.
 
     Args:
         f: a function that takes elements of the leading dimension of x
@@ -245,7 +245,7 @@ def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
 def _chunk_vmapped_function(
     vmapped_fun: Callable, chunk_size: Optional[int], argnums=0
 ) -> Callable:
-    """takes a vmapped function and computes it in chunks"""
+    """takes a vmapped function and computes it in chunks."""
 
     if chunk_size is None:
         return vmapped_fun
@@ -269,9 +269,11 @@ def _parse_in_axes(in_axes):
     return in_axes, argnums
 
 
-def _vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callable:
-    """
-    Behaves like jax.vmap but uses scan to chunk the computations in smaller chunks.
+def _vmap_chunked(
+    f: Callable, in_axes: int | Tuple[int, ...] = 0, *, chunk_size: Optional[int] = None
+) -> Callable:
+    """Behaves like jax.vmap but uses scan to chunk the computations in smaller
+    chunks.
 
     This function is essentially equivalent to:
 
@@ -284,8 +286,8 @@ def _vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Calla
     Args:
         f: The function to be vectorised.
         in_axes: The axes that should be scanned along. Only supports `0` or `None`
-        chunk_size: The maximum size of the chunks to be used. If it is `None`, chunking
-            is disabled
+        chunk_size: The maximum size of the chunks to be used. If it is `None`,
+            chunking is disabled
 
     Returns:
         A vectorised and chunked function
@@ -295,18 +297,34 @@ def _vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Calla
     return _chunk_vmapped_function(vmapped_fun, chunk_size, argnums)
 
 
-def vmap_chunked(f, in_axes=0, chunk_size=None, devices=1):
+def vmap_chunked(
+    f: Callable,
+    in_axes: int | Tuple[int, ...] = 0,
+    chunk_size: Optional[int] = None,
+    devices: int = 1,
+):
     """
     Behaves like jax.vmap but
         1. uses pmap to chunk the computations across multiple devices
-        2. uses scan to chunk the device-level computations into even smaller chunks for memory efficiency
+        2. uses scan to chunk the device-level computations into even
+           smaller chunks for memory efficiency
+
+    Requires that the length of the first dimension of input to be chunked
+    is divisible by the number of devices. Does NOT require that this length
+    is also divisible by the chunk size.
 
     Inputs:
-        f: The function to be vectorised.
-        in_axes: The axes that should be scanned along. Only supports `0` or `None`. Defaults to 0.
-                 This should be the same length as the number of arguments to `f`.
-        chunk_size: The maximum size of the chunks to be used per batch (and per device). If it is `None`, chunking is disabled.
-        devices: The number of devices to split the computation across. Defaults to 1.
+        f: Callable
+            The function to be vectorised.
+        in_axes: int | Tuple[int, ...]
+            The axes that should be scanned along. Only supports `0` or `None`.
+            Defaults to 0. This should be the same length as the number of
+            arguments to `f`.
+        chunk_size: Optional[int]
+            The maximum size of the chunks to be used per batch (and per device).
+            If it is `None`, chunking is disabled.
+        devices: int
+            The number of devices to split the computation across. Defaults to 1.
 
     Returns:
         A vectorised and chunked function that has inputs and outputs like `f`

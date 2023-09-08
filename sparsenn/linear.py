@@ -1,8 +1,8 @@
 from typing import Callable
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 from jax.experimental.sparse import BCOO
 
 from .custom_types import Array, Key
@@ -196,8 +196,10 @@ class SparseMLP(eqx.Module):
 
 class ResLinear(eqx.Module):
     """Sparse linear block with skip connections.
-    Operates as r(f2(r(f1(x))) + x), where f1 and f2 are linear layers with a batchnorm and r is an
-    activation function (leaky ReLU by default)
+
+    Operates as r(f2(r(f1(x))) + x), where f1 and f2 are linear layers
+    with a batchnorm and r is an activation function (leaky ReLU by
+    default)
     """
 
     linear1: SparseLinear
