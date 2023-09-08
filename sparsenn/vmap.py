@@ -269,7 +269,7 @@ def _parse_in_axes(in_axes):
     return in_axes, argnums
 
 
-def vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callable:
+def _vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callable:
     """
     Behaves like jax.vmap but uses scan to chunk the computations in smaller chunks.
 
@@ -293,3 +293,20 @@ def vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callab
     in_axes, argnums = _parse_in_axes(in_axes)
     vmapped_fun = jax.vmap(f, in_axes=in_axes)
     return _chunk_vmapped_function(vmapped_fun, chunk_size, argnums)
+
+
+def vmap_chunked(
+    f: Callable, in_axes=0, *, chunk_size: Optional[int], gpus: int = 1
+) -> Callable:
+    """
+    Behaves like _vmap_chunked but with support for multiple GPUs using pmap.
+    """
+    if chunk_size is None:
+        return jax.pmap(f, in_axes=in_axes, devices=jax.devices()[:gpus])
+    assert chunk_size % gpus == 0, "chunk_size must be divisible by gpus"
+    chunk_size_per_gpu = chunk_size // gpus
+    return jax.pmap(
+        _vmap_chunked(f, in_axes=in_axes, chunk_size=chunk_size_per_gpu),
+        in_axes=in_axes,
+        devices=jax.devices()[:gpus],
+    )
